@@ -1,1 +1,26 @@
+# Environment variables
 .env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+
+# Generated projects workspace
+generated_projects/
+
+# Individual generated projects (if created outside workspace)
+my_new_app/
+flask_api/
+test_project/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
