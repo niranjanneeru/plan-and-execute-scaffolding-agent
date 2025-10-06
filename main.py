@@ -393,7 +393,7 @@ config = {"recursion_limit": 50}
 
 
 # --- Example Usage ---
-async def run_example(inputs):
+async def run_agent(inputs):
     print(f"\n{'='*60}")
     print(f"🚀 Starting Plan-Execute Agent")
     print(f"{'='*60}")
@@ -416,9 +416,9 @@ if __name__ == "__main__":
     # Test with a general knowledge question
     import asyncio
     asyncio.run(
-        run_example(
+        run_agent(
             {
-                "input": "Set up a Python project 'my_new_project'. It needs a 'src' folder, an empty '__init__.py' in 'src', a 'main.py' in 'src' printing 'Hello Scaffolding!', and a 'README.md' at the root with title 'My New Project'."
+                "input": "Set up a Python project 'my_new_flask_api'. It needs a 'src' folder, an empty '__init__.py' in 'src', a 'main.py' in 'src' with a simple health endpoint and a 'README.md' at the root with title 'My New Project'."
             }
         )
     )
