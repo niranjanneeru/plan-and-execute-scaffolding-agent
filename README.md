@@ -1,87 +1,64 @@
-# Plan-and-Execute Scaffolding Agent
+# SearchAgent - Advanced Plan-Execute Agent with Web Search
 
-A LangGraph-based AI agent that uses a **plan-and-execute** pattern to automatically scaffold projects based on natural language descriptions. The agent breaks down complex project setup tasks into discrete steps and executes them sequentially.
+An enhanced plan-execute agent that combines **web search capabilities** with **project scaffolding** using LangGraph's ReAct pattern and replanning capabilities.
 
 ## 🎯 Overview
 
-This agent demonstrates the **Plan-and-Execute** pattern, a powerful approach where:
-1. A **Planner Agent** creates a detailed execution plan
-2. An **Executor Agent** executes each step of the plan one at a time
-3. The system loops until all steps are completed
+This agent demonstrates an advanced **Plan-Execute-Replan** pattern where:
+1. **Planner** creates an initial step-by-step plan
+2. **Executor** (ReAct Agent) executes each step using available tools
+3. **Replanner** evaluates progress and either:
+   - Continues with remaining steps
+   - Updates the plan based on observations
+   - Returns final response when complete
 
 ## 🏗️ Architecture
-
-### Components
 
 ```
 ┌─────────────┐
 │   Input     │
-│  Request    │
 └──────┬──────┘
        │
        ▼
 ┌─────────────┐
-│   Planner   │ ◄─── Creates detailed step-by-step plan
-│    Node     │
+│  Planner    │ ◄─── Creates initial plan using LLM
 └──────┬──────┘
        │
        ▼
 ┌─────────────┐
-│  Executor   │ ◄─── Executes one step at a time
-│    Node     │      using tools (execute_command)
+│   Agent     │ ◄─── Executes step using ReAct pattern
+│ (Executor)  │      with tools (search, execute_command)
 └──────┬──────┘
        │
        ▼
 ┌─────────────┐
-│  Decision   │ ◄─── Should continue or end?
-│    Logic    │
+│  Replanner  │ ◄─── Evaluates progress & decides next action
 └──────┬──────┘
        │
-       ├─── Continue ──► Loop back to Executor
+       ├─── More steps? ──► Loop back to Agent
        │
-       └─── End ──────► Final State
+       └─── Done? ────────► Return Response
 ```
 
-### State Management
+## 🔧 Key Features
 
-The agent maintains state using `AgentState` TypedDict:
-- **`input`**: The original user request
-- **`plan`**: The generated execution plan
-- **`past_steps`**: List of executed steps with their outputs
-- **`response`**: The most recent response from the executor
+### 1. **Dual-Purpose Agent**
+- **Web Search**: Answer general knowledge questions using Tavily search
+- **Project Scaffolding**: Create project structures with files and directories
 
-## 🔧 How It Works
+### 2. **ReAct Execution Pattern**
+- Uses `create_react_agent` for intelligent tool selection
+- Automatic reasoning about which tool to use
+- Handles complex multi-step tasks
 
-### 1. **Planning Phase** (`plan_node`)
-- Takes the user's natural language request
-- Uses GPT-4 to generate a detailed, step-by-step plan
-- Breaks down the project into executable commands like:
-  - `mkdir <directory>` - Create directories
-  - `touch <file>` - Create files
-  - `write file <filename> content: <content>` - Write file contents
+### 3. **Dynamic Replanning**
+- Evaluates progress after each step
+- Can update the plan based on observations
+- Decides when task is complete
 
-### 2. **Execution Phase** (`execute_node`)
-- Receives the plan and past executed steps
-- Uses **OpenAI tool calling** to invoke the `execute_command` tool
-- Executes one step at a time
-- Tracks each execution in `past_steps`
-- Returns the result of the execution
-
-### 3. **Decision Phase** (`should_continue`)
-- Checks if execution is finished (looks for "Finished" signal)
-- Compares executed steps count vs. total plan steps
-- Decides whether to:
-  - **Continue**: Loop back to executor for next step
-  - **End**: Terminate the workflow
-
-### 4. **Tool: execute_command**
-- **Real command executor** that actually creates files and directories
-- Handles commands like:
-  - `mkdir <directory>` - Creates actual directories
-  - `touch <file>` - Creates actual files
-  - `write file <filename> content: <content>` - Writes actual content to files
-  - Any other shell command - Executes via subprocess
-- ⚠️ **Warning**: This will make real changes to your file system!
+### 4. **Structured Output**
+- Uses Pydantic models for type-safe planning
+- Clear separation between plans and responses
 
 ## 🚀 Getting Started
 
@@ -90,176 +67,196 @@ The agent maintains state using `AgentState` TypedDict:
 ```bash
 Python 3.8+
 OpenAI API Key
+Tavily API Key (optional, for web search)
 ```
 
 ### Installation
 
-1. Clone the repository:
+1. Install dependencies:
 ```bash
-git clone https://github.com/mathew-v-keyvalue/plan-and-execute-scaffolding-agent.git
-cd plan-and-execute-scaffolding-agent
+pip install -r requirements.txt
 ```
 
-2. Create a virtual environment:
+2. Set up environment variables in `.env`:
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
-pip install langchain langchain-openai langgraph python-dotenv
-```
-
-4. Create a `.env` file:
-```bash
-OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_API_KEY=your_openai_api_key
+TAVILY_API_KEY=your_tavily_api_key  # Optional
 ```
 
 ### Usage
 
-Run the agent:
+Run the search agent:
 ```bash
-python main.py
+python SearchAgnet.py
 ```
 
-**Important**: All generated projects are created in the `generated_projects/` directory to keep your workspace clean and prevent accidentally overwriting your agent code!
+## 📊 Example Use Cases
 
-The default example creates a Python project with:
-- A `src/` directory
-- An `__init__.py` file
-- A `main.py` with "Hello, World!"
-- A `requirements.txt` file
+### 1. General Knowledge Question
+```python
+asyncio.run(
+    run_example({
+        "input": "what is the hometown of the mens 2024 Australia open winner?"
+    })
+)
+```
 
-All files will be created inside: `generated_projects/my_new_app/`
+**Flow:**
+1. Planner: Create steps to search and find answer
+2. Agent: Use Tavily search tool to find information
+3. Replanner: Verify answer and return response
 
-### Customizing the Input
+### 2. Project Scaffolding
+```python
+asyncio.run(
+    run_example({
+        "input": "Set up a Python project 'my_new_project'. It needs a 'src' folder, an empty '__init__.py' in 'src', a 'main.py' in 'src' printing 'Hello Scaffolding!', and a 'README.md' at the root with title 'My New Project'."
+    })
+)
+```
 
-Modify the `initial_input` in `main.py`:
+**Flow:**
+1. Planner: Break down into mkdir, touch, write file commands
+2. Agent: Execute each command using execute_command tool
+3. Replanner: Verify all steps complete and return success
+
+## 🔑 Key Components
+
+### State Management
+```python
+class PlanExecute(TypedDict):
+    input: str                              # Original user query
+    plan: List[str]                         # Current plan steps
+    past_steps: List[Tuple[str, str]]       # (step, observation) pairs
+    response: str                           # Final response
+    messages: List[BaseMessage]             # Conversation history
+```
+
+### Pydantic Models
+```python
+class Plan(BaseModel):
+    steps: List[str]  # Ordered list of steps
+
+class Response(BaseModel):
+    response: str  # Final answer to user
+
+class Act(BaseModel):
+    action: Union[Response, Plan]  # Either respond or continue planning
+```
+
+### Tools
+
+**1. execute_command** - Project scaffolding
+- `mkdir <dir>` - Create directories
+- `touch <file>` - Create files
+- `write file <file> content: <content>` - Write file contents
+
+**2. tavily_tool** - Web search (optional)
+- Searches the web for factual information
+- Returns top 3 results
+
+## 🎓 Advanced Features
+
+### Replanning Logic
+
+The replanner uses structured output to decide:
+```python
+async def replan_step(state: PlanExecute):
+    output = await replanner.ainvoke(state)
+    if isinstance(output.action, Response):
+        # Task complete - return final response
+        return {"response": output.action.response}
+    else:
+        # More work needed - update plan
+        return {"plan": output.action.steps}
+```
+
+### Conditional Routing
 
 ```python
-initial_input = "Set up a React project with TypeScript, ESLint, and a components folder"
+def should_end(state: PlanExecute) -> str:
+    if "response" in state and state["response"]:
+        return "__end__"  # Task complete
+    elif not state.get("plan", []):
+        return "__end__"  # No more steps
+    else:
+        return "agent"  # Continue execution
 ```
 
-## 📊 Key Technologies
+## 🔄 Workflow Comparison
 
-- **LangChain**: Framework for building LLM applications
-- **LangGraph**: State machine library for building agent workflows
-- **OpenAI GPT-4**: LLM for planning and execution
-- **Tool Calling**: OpenAI's function calling for structured tool invocation
+### SearchAgent (This File) vs main.py
 
-## 🔑 Key Concepts
+| Feature | SearchAgent.py | main.py |
+|---------|---------------|---------|
+| **Pattern** | Plan-Execute-Replan | Plan-Execute |
+| **Executor** | ReAct Agent | Tool Calling |
+| **Tools** | Search + Scaffolding | Scaffolding only |
+| **Replanning** | ✅ Dynamic | ❌ Static plan |
+| **Use Case** | General Q&A + Projects | Projects only |
+| **Complexity** | Higher | Lower |
 
-### Plan-and-Execute Pattern
-
-This pattern is ideal for:
-- ✅ Complex, multi-step tasks
-- ✅ Tasks requiring sequential execution
-- ✅ Scenarios where planning ahead improves outcomes
-- ✅ Tasks that benefit from explicit step tracking
-
-### Tool Calling vs ReAct
-
-This implementation uses **OpenAI's native tool calling** instead of the ReAct pattern:
-- **Tool Calling**: Direct function invocation via OpenAI API
-  - More reliable and structured
-  - Better error handling
-  - Simpler implementation
-  
-- **ReAct**: Reasoning + Acting pattern
-  - Requires specific prompt format
-  - More verbose with thought/action/observation cycles
-
-### State Graph (LangGraph)
-
-The workflow is defined as a state graph:
-```python
-workflow = StateGraph(AgentState)
-workflow.add_node("plan", plan_node)
-workflow.add_node("execute", execute_node)
-workflow.set_entry_point("plan")
-workflow.add_edge("plan", "execute")
-workflow.add_conditional_edges("execute", should_continue, {...})
-```
-
-## 🎓 Learning Points
-
-1. **Separation of Concerns**: Planning and execution are separate, focused agents
-2. **State Management**: LangGraph manages state transitions automatically
-3. **Tool Integration**: Tools extend agent capabilities beyond text generation
-4. **Iterative Execution**: The loop continues until all steps are complete
-5. **Error Handling**: The system can handle partial failures and continue
-
-## 🔄 Workflow Example
-
-```
-User Input: "Create a Flask API project"
-
-PLANNING:
-├─ Step 1: mkdir flask_api
-├─ Step 2: touch flask_api/app.py
-├─ Step 3: write file flask_api/app.py content: <Flask boilerplate>
-└─ Step 4: touch flask_api/requirements.txt
-
-EXECUTING:
-├─ Execute Step 1 → "Directory created: flask_api"
-├─ Execute Step 2 → "File created: flask_api/app.py"
-├─ Execute Step 3 → "Content written to flask_api/app.py"
-├─ Execute Step 4 → "File created: flask_api/requirements.txt"
-└─ Signal: "Finished."
-
-RESULT: Project scaffolded successfully!
-```
-
-## 🛠️ Extending the Agent
+## 🛠️ Customization
 
 ### Add More Tools
 
 ```python
 @tool
-def install_dependencies(package: str) -> str:
-    """Install a Python package using pip"""
-    os.system(f"pip install {package}")
-    return f"Installed {package}"
+def calculator(expression: str) -> str:
+    """Evaluate a mathematical expression"""
+    return str(eval(expression))
 
-tools = [execute_command, install_dependencies]
+tools = [execute_command, tavily_tool, calculator]
 ```
 
-### Add Re-planning Capability
-
-Modify the workflow to allow the executor to request re-planning if a step fails:
+### Adjust Recursion Limit
 
 ```python
-workflow.add_conditional_edges(
-    "execute",
-    should_continue,
-    {"continue": "execute", "replan": "plan", "end": END}
+config = {"recursion_limit": 100}  # Increase for complex tasks
+```
+
+### Change LLM Model
+
+```python
+llm = ChatOpenAI(
+    model="gpt-4-turbo",  # or "gpt-3.5-turbo"
+    temperature=0.7,       # Adjust creativity
 )
 ```
 
 ## 📝 Notes
 
-- ⚠️ **Real Execution**: This agent makes REAL changes to your file system - use with caution!
-- **GPT-4 Model**: Uses GPT-4 for better planning capabilities (can be changed to GPT-3.5-turbo)
-- **Temperature**: Set to 0 for deterministic outputs
-- **Error Handling**: Includes try-catch blocks and subprocess error handling
-- **Safety**: Commands have a 30-second timeout to prevent hanging
-- **Tip**: Test in a dedicated directory first before using in production environments
+- **Async/Await**: This implementation uses async for better performance
+- **Structured Output**: Requires OpenAI models that support function calling
+- **Tavily Optional**: Works without Tavily for scaffolding-only tasks
+- **Recursion Limit**: Set to 50 by default to prevent infinite loops
+
+## 🐛 Troubleshooting
+
+### "Tavily tool not available"
+- This is normal if you don't have TAVILY_API_KEY set
+- Agent will still work for project scaffolding tasks
+
+### "Recursion limit reached"
+- Increase `recursion_limit` in config
+- Check if replanner is properly detecting completion
+
+### "No response generated"
+- Ensure the task is clear and achievable
+- Check that appropriate tools are available
 
 ## 🤝 Contributing
 
-Feel free to fork, improve, and submit pull requests!
+This is a learning example. Feel free to:
+- Add more tools
+- Improve the replanning logic
+- Add error handling
+- Create more sophisticated prompts
 
 ## 📄 License
 
 MIT License
 
-## 🔗 Resources
-
-- [LangChain Documentation](https://python.langchain.com/)
-- [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
-- [OpenAI API Documentation](https://platform.openai.com/docs/)
-
 ---
 
-**Built with ❤️ using LangChain and LangGraph**
+**Built with ❤️ using LangChain, LangGraph, and OpenAI**
