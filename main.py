@@ -17,33 +17,161 @@ load_dotenv()
 
 
 # --- Define Tools ---
-# Project scaffolding tool
+# Set up workspace directory for generated projects
+WORKSPACE_DIR = "generated_projects"
+os.makedirs(WORKSPACE_DIR, exist_ok=True)
+
+
 @tool
-def execute_command(command: str) -> str:
-    """
-    Executes a given command in the context of project scaffolding.
-    This is a simulated execution for demonstration.
-    In a real application, this would interact with the file system (e.g., creating directories, files, writing content).
-    """
-    print(f"Executing: {command}")
-    # Simulate file system operations
-    if "mkdir" in command:
-        return f"Directory created: {command.split()[-1]}"
-    elif "touch" in command:
-        return f"File created: {command.split()[-1]}"
-    elif "write file" in command:
-        parts = command.split("content:")
-        filename = parts[0].replace("write file", "").strip()
-        content = parts[1].strip() if len(parts) > 1 else "empty content"
-        return (
-            f"Content written to {filename}: '{content[:50]}...'"  # show first 50 chars
-        )
-    else:
-        return f"Command '{command}' executed successfully (simulated)."
+def create_directory(path: str) -> str:
+    """Create a directory in the generated_projects folder"""
+    if not path.startswith("generated_projects/"):
+        path = f"generated_projects/{path}"
+    
+    try:
+        os.makedirs(path, exist_ok=True)
+        return f"✓ Created directory: {path}"
+    except Exception as e:
+        return f"✗ Error creating directory: {str(e)}"
+
+
+@tool
+def create_file(path: str, content: str = "") -> str:
+    """Create a file with specified content in the generated_projects folder"""
+    if not path.startswith("generated_projects/"):
+        path = f"generated_projects/{path}"
+    
+    try:
+        # Create parent directories if needed
+        dir_path = os.path.dirname(path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+        
+        # Create the file with content
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        
+        return f"✓ Created file: {path} ({len(content)} characters)"
+    except Exception as e:
+        return f"✗ Error creating file: {str(e)}"
+
+
+@tool
+def write_to_file(path: str, content: str) -> str:
+    """Write or append content to an existing file"""
+    if not path.startswith("generated_projects/"):
+        path = f"generated_projects/{path}"
+    
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(content)
+        return f"✓ Wrote to file: {path} ({len(content)} characters)"
+    except Exception as e:
+        return f"✗ Error writing to file: {str(e)}"
+
+
+@tool
+def move_file(source: str, destination: str) -> str:
+    """Move or rename a file or directory"""
+    import shutil
+    
+    if not source.startswith("generated_projects/"):
+        source = f"generated_projects/{source}"
+    if not destination.startswith("generated_projects/"):
+        destination = f"generated_projects/{destination}"
+    
+    try:
+        # Create destination directory if needed
+        dest_dir = os.path.dirname(destination)
+        if dest_dir:
+            os.makedirs(dest_dir, exist_ok=True)
+        
+        shutil.move(source, destination)
+        return f"✓ Moved {source} to {destination}"
+    except Exception as e:
+        return f"✗ Error moving file: {str(e)}"
+
+
+@tool
+def delete_file(path: str) -> str:
+    """Delete a file or directory"""
+    import shutil
+    
+    if not path.startswith("generated_projects/"):
+        path = f"generated_projects/{path}"
+    
+    try:
+        if os.path.isfile(path):
+            os.remove(path)
+            return f"✓ Deleted file: {path}"
+        elif os.path.isdir(path):
+            shutil.rmtree(path)
+            return f"✓ Deleted directory: {path}"
+        else:
+            return f"✗ Path does not exist: {path}"
+    except Exception as e:
+        return f"✗ Error deleting: {str(e)}"
+
+
+@tool
+def list_directory(path: str = "generated_projects") -> str:
+    """List contents of a directory"""
+    if not path.startswith("generated_projects/") and path != "generated_projects":
+        path = f"generated_projects/{path}"
+    
+    try:
+        items = os.listdir(path)
+        if not items:
+            return f"Directory {path} is empty"
+        
+        result = f"Contents of {path}:\n"
+        for item in sorted(items):
+            item_path = os.path.join(path, item)
+            if os.path.isdir(item_path):
+                result += f"  📁 {item}/\n"
+            else:
+                size = os.path.getsize(item_path)
+                result += f"  📄 {item} ({size} bytes)\n"
+        return result
+    except Exception as e:
+        return f"✗ Error listing directory: {str(e)}"
+
+
+@tool
+def generate_code(description: str, language: str) -> str:
+    """Generate code based on description using LLM"""
+    from pydantic import BaseModel
+    from langchain_core.output_parsers import PydanticOutputParser
+    
+    class CodeResponse(BaseModel):
+        code: str
+    
+    parser = PydanticOutputParser(pydantic_object=CodeResponse)
+    
+    prompt = f"""Generate {language} code for: {description}
+
+{parser.get_format_instructions()}
+
+Provide clean, well-commented code."""
+    
+    try:
+        response = llm.invoke(prompt)
+        parsed = parser.parse(response.content)
+        return parsed.code
+    except Exception as e:
+        return f"✗ Error generating code: {str(e)}"
 
 
 # Combine tools for the agent
-tools = [execute_command]
+tools = [
+    create_directory,
+    create_file,
+    write_to_file,
+    move_file,
+    delete_file,
+    list_directory,
+    generate_code,
+]
 
 # --- LLM Initialization ---
 llm = ChatOpenAI(model="gpt-4", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
@@ -100,7 +228,17 @@ planner_prompt = ChatPromptTemplate.from_messages(
             """For the given objective, come up with a simple step by step plan for project scaffolding. \
 This plan should involve individual tasks, that if executed correctly will yield the correct answer. Do not add any superfluous steps. \
 The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps.
-Ensure steps involve 'mkdir', 'touch', 'write file <filename> content: <content>' commands.""",
+
+Available tools:
+- create_directory: Create directories
+- create_file: Create files with content
+- write_to_file: Add content to existing files
+- move_file: Move or rename files/directories
+- delete_file: Delete files or directories
+- list_directory: List directory contents
+- generate_code: Generate code using AI
+
+Break down the task into clear, actionable steps using these tools.""",
         ),
         (
             "placeholder",
@@ -127,7 +265,7 @@ Analyze the completed steps and decide:
 IMPORTANT: 
 - Do NOT include already completed steps in the new plan.
 - Do NOT return both a response and a plan - choose ONE.
-- For project scaffolding, use commands: 'mkdir', 'touch', 'write file <filename> content: <content>'
+- Use the available tools: create_directory, create_file, write_to_file, move_file, delete_file, list_directory, generate_code
 - Be concise and specific.
 """
 )
