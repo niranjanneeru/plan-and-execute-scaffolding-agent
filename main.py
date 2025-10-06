@@ -11,23 +11,13 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMe
 from langgraph.prebuilt import create_react_agent
 from langgraph.graph import StateGraph, END, START
 from langchain.tools import tool
-from langchain_community.tools.tavily_search import TavilySearchResults
 
 # Load environment variables
 load_dotenv()
 
 
 # --- Define Tools ---
-# General search tool for factual queries (optional - requires TAVILY_API_KEY)
-try:
-    tavily_tool = TavilySearchResults(max_results=3)
-    print("✓ Tavily search tool loaded")
-except Exception as e:
-    print(f"⚠️  Tavily tool not available: {e}")
-    tavily_tool = None
-
-
-# Project scaffolding specific tool (from previous example)
+# Project scaffolding tool
 @tool
 def execute_command(command: str) -> str:
     """
@@ -54,8 +44,6 @@ def execute_command(command: str) -> str:
 
 # Combine tools for the agent
 tools = [execute_command]
-if tavily_tool:
-    tools.append(tavily_tool)
 
 # --- LLM Initialization ---
 llm = ChatOpenAI(model="gpt-4", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
@@ -109,11 +97,10 @@ planner_prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            """For the given objective, come up with a simple step by step plan. \
+            """For the given objective, come up with a simple step by step plan for project scaffolding. \
 This plan should involve individual tasks, that if executed correctly will yield the correct answer. Do not add any superfluous steps. \
 The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps.
-If the objective is about project scaffolding, ensure steps involve 'mkdir', 'touch', 'write file <filename> content: <content>' commands.
-If the objective is a general knowledge question, ensure steps involve searching for information.""",
+Ensure steps involve 'mkdir', 'touch', 'write file <filename> content: <content>' commands.""",
         ),
         (
             "placeholder",

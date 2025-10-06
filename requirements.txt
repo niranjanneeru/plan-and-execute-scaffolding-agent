@@ -3,5 +3,4 @@ langchain-openai
 langchain-community
 langgraph
 python-dotenv
-tavily-python  # Optional: for web search capabilities
 pydantic

@@ -1,6 +1,6 @@
-# SearchAgent - Advanced Plan-Execute Agent with Web Search
+# Plan-Execute Agent for Project Scaffolding
 
-An enhanced plan-execute agent that combines **web search capabilities** with **project scaffolding** using LangGraph's ReAct pattern and replanning capabilities.
+An advanced plan-execute agent for **project scaffolding** using LangGraph's ReAct pattern and replanning capabilities.
 
 ## 🎯 Overview
 
@@ -27,7 +27,7 @@ This agent demonstrates an advanced **Plan-Execute-Replan** pattern where:
        ▼
 ┌─────────────┐
 │   Agent     │ ◄─── Executes step using ReAct pattern
-│ (Executor)  │      with tools (search, execute_command)
+│ (Executor)  │      with execute_command tool
 └──────┬──────┘
        │
        ▼
@@ -42,9 +42,9 @@ This agent demonstrates an advanced **Plan-Execute-Replan** pattern where:
 
 ## 🔧 Key Features
 
-### 1. **Dual-Purpose Agent**
-- **Web Search**: Answer general knowledge questions using Tavily search
-- **Project Scaffolding**: Create project structures with files and directories
+### 1. **Project Scaffolding**
+- Create project structures with files and directories
+- Execute commands to set up complete project environments
 
 ### 2. **ReAct Execution Pattern**
 - Uses `create_react_agent` for intelligent tool selection
@@ -67,7 +67,6 @@ This agent demonstrates an advanced **Plan-Execute-Replan** pattern where:
 ```bash
 Python 3.8+
 OpenAI API Key
-Tavily API Key (optional, for web search)
 ```
 
 ### Installation
@@ -80,33 +79,18 @@ pip install -r requirements.txt
 2. Set up environment variables in `.env`:
 ```bash
 OPENAI_API_KEY=your_openai_api_key
-TAVILY_API_KEY=your_tavily_api_key  # Optional
 ```
 
 ### Usage
 
-Run the search agent:
+Run the agent:
 ```bash
-python SearchAgnet.py
+python main.py
 ```
 
-## 📊 Example Use Cases
+## 📊 Example Use Case
 
-### 1. General Knowledge Question
-```python
-asyncio.run(
-    run_example({
-        "input": "what is the hometown of the mens 2024 Australia open winner?"
-    })
-)
-```
-
-**Flow:**
-1. Planner: Create steps to search and find answer
-2. Agent: Use Tavily search tool to find information
-3. Replanner: Verify answer and return response
-
-### 2. Project Scaffolding
+### Project Scaffolding
 ```python
 asyncio.run(
     run_example({
@@ -146,14 +130,10 @@ class Act(BaseModel):
 
 ### Tools
 
-**1. execute_command** - Project scaffolding
+**execute_command** - Project scaffolding tool
 - `mkdir <dir>` - Create directories
 - `touch <file>` - Create files
 - `write file <file> content: <content>` - Write file contents
-
-**2. tavily_tool** - Web search (optional)
-- Searches the web for factual information
-- Returns top 3 results
 
 ## 🎓 Advanced Features
 
@@ -183,18 +163,13 @@ def should_end(state: PlanExecute) -> str:
         return "agent"  # Continue execution
 ```
 
-## 🔄 Workflow Comparison
+## 🔄 Key Advantages
 
-### SearchAgent (This File) vs main.py
-
-| Feature | SearchAgent.py | main.py |
-|---------|---------------|---------|
-| **Pattern** | Plan-Execute-Replan | Plan-Execute |
-| **Executor** | ReAct Agent | Tool Calling |
-| **Tools** | Search + Scaffolding | Scaffolding only |
-| **Replanning** | ✅ Dynamic | ❌ Static plan |
-| **Use Case** | General Q&A + Projects | Projects only |
-| **Complexity** | Higher | Lower |
+- **Dynamic Replanning**: Adapts the plan based on execution results
+- **ReAct Pattern**: Intelligent reasoning about tool usage
+- **Structured Output**: Type-safe planning with Pydantic models
+- **Async Execution**: Better performance for I/O operations
+- **Flexible**: Easy to add more tools and capabilities
 
 ## 🛠️ Customization
 
@@ -206,7 +181,7 @@ def calculator(expression: str) -> str:
     """Evaluate a mathematical expression"""
     return str(eval(expression))
 
-tools = [execute_command, tavily_tool, calculator]
+tools = [execute_command, calculator]
 ```
 
 ### Adjust Recursion Limit
@@ -228,14 +203,10 @@ llm = ChatOpenAI(
 
 - **Async/Await**: This implementation uses async for better performance
 - **Structured Output**: Requires OpenAI models that support function calling
-- **Tavily Optional**: Works without Tavily for scaffolding-only tasks
 - **Recursion Limit**: Set to 50 by default to prevent infinite loops
+- **Simulated Execution**: Commands are simulated by default for safety
 
 ## 🐛 Troubleshooting
-
-### "Tavily tool not available"
-- This is normal if you don't have TAVILY_API_KEY set
-- Agent will still work for project scaffolding tasks
 
 ### "Recursion limit reached"
 - Increase `recursion_limit` in config
