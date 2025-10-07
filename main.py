@@ -15,9 +15,7 @@ from langchain.tools import tool
 # Load environment variables
 load_dotenv()
 
-
 # --- Define Tools ---
-# Set up workspace directory for generated projects
 WORKSPACE_DIR = "generated_projects"
 os.makedirs(WORKSPACE_DIR, exist_ok=True)
 
@@ -27,7 +25,7 @@ def create_directory(path: str) -> str:
     """Create a directory in the generated_projects folder"""
     if not path.startswith("generated_projects/"):
         path = f"generated_projects/{path}"
-    
+
     try:
         os.makedirs(path, exist_ok=True)
         return f"✓ Created directory: {path}"
@@ -40,17 +38,15 @@ def create_file(path: str, content: str = "") -> str:
     """Create a file with specified content in the generated_projects folder"""
     if not path.startswith("generated_projects/"):
         path = f"generated_projects/{path}"
-    
+
     try:
-        # Create parent directories if needed
         dir_path = os.path.dirname(path)
         if dir_path:
             os.makedirs(dir_path, exist_ok=True)
-        
-        # Create the file with content
+
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
-        
+
         return f"✓ Created file: {path} ({len(content)} characters)"
     except Exception as e:
         return f"✗ Error creating file: {str(e)}"
@@ -61,7 +57,7 @@ def write_to_file(path: str, content: str) -> str:
     """Write or append content to an existing file"""
     if not path.startswith("generated_projects/"):
         path = f"generated_projects/{path}"
-    
+
     try:
         with open(path, "a", encoding="utf-8") as f:
             f.write(content)
@@ -74,18 +70,17 @@ def write_to_file(path: str, content: str) -> str:
 def move_file(source: str, destination: str) -> str:
     """Move or rename a file or directory"""
     import shutil
-    
+
     if not source.startswith("generated_projects/"):
         source = f"generated_projects/{source}"
     if not destination.startswith("generated_projects/"):
         destination = f"generated_projects/{destination}"
-    
+
     try:
-        # Create destination directory if needed
         dest_dir = os.path.dirname(destination)
         if dest_dir:
             os.makedirs(dest_dir, exist_ok=True)
-        
+
         shutil.move(source, destination)
         return f"✓ Moved {source} to {destination}"
     except Exception as e:
@@ -96,10 +91,10 @@ def move_file(source: str, destination: str) -> str:
 def delete_file(path: str) -> str:
     """Delete a file or directory"""
     import shutil
-    
+
     if not path.startswith("generated_projects/"):
         path = f"generated_projects/{path}"
-    
+
     try:
         if os.path.isfile(path):
             os.remove(path)
@@ -118,12 +113,12 @@ def list_directory(path: str = "generated_projects") -> str:
     """List contents of a directory"""
     if not path.startswith("generated_projects/") and path != "generated_projects":
         path = f"generated_projects/{path}"
-    
+
     try:
         items = os.listdir(path)
         if not items:
             return f"Directory {path} is empty"
-        
+
         result = f"Contents of {path}:\n"
         for item in sorted(items):
             item_path = os.path.join(path, item)
@@ -138,31 +133,59 @@ def list_directory(path: str = "generated_projects") -> str:
 
 
 @tool
-def generate_code(description: str, language: str) -> str:
-    """Generate code based on description using LLM"""
+def code_generation(
+    description: str, language: str, is_documented: bool = False
+) -> str:
+    """Generate code based on description.
+
+    Args:
+        description: What the code should do
+        language: Programming language (python, javascript, etc.)
+        is_documented: If True, generate comprehensive documentation and comments
+    """
     from pydantic import BaseModel
     from langchain_core.output_parsers import PydanticOutputParser
-    
+
     class CodeResponse(BaseModel):
         code: str
-    
+
     parser = PydanticOutputParser(pydantic_object=CodeResponse)
-    
-    prompt = f"""Generate {language} code for: {description}
+
+    if is_documented:
+        print("  📚 Generating DOCUMENTED code...")
+        prompt = f"""Generate well-documented {language} code for: {description}
+
+Requirements:
+1. Include comprehensive docstrings/comments explaining what the code does
+2. Add inline comments for complex logic
+3. Follow best practices and proper error handling
+4. Use type hints (for Python) or appropriate type annotations
+5. Include usage examples in comments
 
 {parser.get_format_instructions()}
 
-Provide clean, well-commented code."""
-    
+Provide clean, well-documented, production-ready code."""
+    else:
+        print("  📝 Generating basic code...")
+        prompt = f"""Generate {language} code for: {description}
+
+{parser.get_format_instructions()}
+
+Provide clean, functional code."""
+
     try:
         response = llm.invoke(prompt)
         parsed = parser.parse(response.content)
-        return parsed.code
+        doc_status = (
+            "with comprehensive documentation"
+            if is_documented
+            else "without documentation"
+        )
+        return f"✓ Generated code {doc_status}\n\n{parsed.code}"
     except Exception as e:
         return f"✗ Error generating code: {str(e)}"
 
 
-# Combine tools for the agent
 tools = [
     create_directory,
     create_file,
@@ -170,33 +193,23 @@ tools = [
     move_file,
     delete_file,
     list_directory,
-    generate_code,
+    code_generation,
 ]
 
-# --- LLM Initialization ---
 llm = ChatOpenAI(model="gpt-4", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
-
-# --- ReAct Agent for Execution ---
-# The prompt for create_react_agent is implicit or can be passed via messages
-# create_react_agent directly uses the LLM and tools to form a ReAct loop.
-# It expects a list of messages as input.
 agent_executor = create_react_agent(llm, tools)
 
 
 # --- State Definition ---
 class PlanExecute(TypedDict):
-    input: str  # The original user query
+    input: str
     plan: List[str]
-    past_steps: Annotated[
-        List[Tuple[str, str]], operator.add
-    ]  # List of (step_description, observation)
+    past_steps: Annotated[List[Tuple[str, str]], operator.add]
     response: str
-    messages: Annotated[
-        List[BaseMessage], operator.add
-    ]  # Keep track of conversation for the agent
+    messages: Annotated[List[BaseMessage], operator.add]
 
 
-# --- Pydantic Models for Structured Output ---
+# --- Pydantic Models ---
 class Plan(BaseModel):
     """Plan to follow in future"""
 
@@ -220,14 +233,12 @@ class Act(BaseModel):
     )
 
 
-# --- Planner Prompt and Chain ---
+# --- Planner Prompt ---
 planner_prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            """For the given objective, come up with a simple step by step plan for project scaffolding. \
-This plan should involve individual tasks, that if executed correctly will yield the correct answer. Do not add any superfluous steps. \
-The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps.
+            """For the given objective, come up with a simple step by step plan for project scaffolding.
 
 Available tools:
 - create_directory: Create directories
@@ -236,37 +247,46 @@ Available tools:
 - move_file: Move or rename files/directories
 - delete_file: Delete files or directories
 - list_directory: List directory contents
-- generate_code: Generate code using AI
+- code_generation: Generate code
 
-Break down the task into clear, actionable steps using these tools.""",
+Break down the task into clear, actionable steps.""",
         ),
-        (
-            "placeholder",
-            "{messages}",
-        ),  # Planner expects messages, not just input directly
+        ("placeholder", "{messages}"),
     ]
 )
 planner = planner_prompt | llm.with_structured_output(Plan)
 
-# --- Replanner Prompt and Chain ---
+
+# --- Enhanced Replanner with Code Generation Detection ---
 replanner_prompt = ChatPromptTemplate.from_template(
-    """You are a task replanner. Based on the progress so far, decide what to do next.
+    """You are a task replanner that improves plans as you go.
 
 Original objective: {input}
 
-Original plan: {plan}
+Original plan:
+{plan}
 
-Completed steps: {past_steps}
+Completed steps:
+{past_steps}
 
-Analyze the completed steps and decide:
-1. If ALL tasks are complete and the objective is fully achieved, return a Response with a summary.
-2. If there are still steps remaining, return a Plan with ONLY the steps that still need to be done.
+Analyze the remaining steps and improve them:
 
-IMPORTANT: 
-- Do NOT include already completed steps in the new plan.
-- Do NOT return both a response and a plan - choose ONE.
-- Use the available tools: create_directory, create_file, write_to_file, move_file, delete_file, list_directory, generate_code
-- Be concise and specific.
+CRITICAL RULE FOR CODE GENERATION:
+- If the NEXT upcoming step uses code_generation tool, you MUST change is_documented=False to is_documented=True
+- This ensures we generate properly documented code instead of basic code
+- Look for steps containing "code_generation" and upgrade them
+
+Other improvements:
+- Remove already completed steps
+- Fix any errors from past steps
+- Add missing steps if needed
+
+If all work is complete, return Response.
+Otherwise, return Plan with improved remaining steps.
+
+Example improvement:
+Original: "Use code_generation with description='create Flask app', language='python', is_documented=False"
+Improved: "Use code_generation with description='create Flask app', language='python', is_documented=True"
 """
 )
 replanner = replanner_prompt | llm.with_structured_output(Act)
@@ -275,23 +295,23 @@ replanner = replanner_prompt | llm.with_structured_output(Act)
 # --- Graph Nodes ---
 async def execute_step(state: PlanExecute):
     plan = state["plan"]
-    past_steps = state.get("past_steps", [])
-    current_step_description = plan[0]  # Get the current step from the plan
+    current_step_description = plan[0]
 
     print(f"\n🔧 Executing step: {current_step_description}")
 
-    # Construct the messages for the agent_executor
+    # Check if this is a code generation step
+    if (
+        "code_generation" in current_step_description
+        and "is_documented=True" in current_step_description
+    ):
+        print("  ⭐ REPLANNER ENHANCED THIS STEP: Added documentation!")
+
     agent_messages = [
         HumanMessage(content=f"Execute this task: {current_step_description}")
     ]
-
-    # Invoke the ReAct agent
     agent_response = await agent_executor.ainvoke({"messages": agent_messages})
 
-    # Extract the observation from the agent's response
     messages = agent_response["messages"]
-
-    # Find the last tool message or AI message
     observation = ""
     for msg in reversed(messages):
         if isinstance(msg, ToolMessage):
@@ -304,60 +324,79 @@ async def execute_step(state: PlanExecute):
     if not observation:
         observation = "Step completed"
 
-    print(f"✓ Result: {observation[:100]}...")
+    print(f"✓ Result: {observation[:200]}...")
 
     return {
         "past_steps": [(current_step_description, observation)],
-        "plan": plan[1:],  # Remove the executed step from the plan
+        "plan": plan[1:],
     }
 
 
 async def plan_step(state: PlanExecute):
-    print(f"\n📋 Planning for: {state['input']}")
-    # The planner expects a list of messages, with the user's input as a HumanMessage
+    print(f"\n{'='*60}")
+    print(f"📋 PLANNING PHASE")
+    print(f"{'='*60}")
+    print(f"Input: {state['input']}\n")
+
     plan_output = await planner.ainvoke(
         {"messages": [HumanMessage(content=state["input"])]}
     )
-    print(f"\n📝 Plan created with {len(plan_output.steps)} steps:")
-    for i, step in enumerate(plan_output.steps, 1):
-        print(f"  {i}. {step}")
 
-    return {
-        "plan": plan_output.steps,
-    }
+    print(f"📝 Initial Plan (code_generation steps start with is_documented=False):")
+    for i, step in enumerate(plan_output.steps, 1):
+        print(f"  {" "} {i}. {step}")
+    print()
+
+    return {"plan": plan_output.steps}
 
 
 async def replan_step(state: PlanExecute):
-    print("\n🔄 Replanning...")
+    print(f"\n{'='*60}")
+    print(f"🔄 REPLANNING PHASE")
+    print(f"{'='*60}")
 
-    # Format past_steps for better readability
     past_steps = state.get("past_steps", [])
-    formatted_steps = "\n".join([f"- {step}: {obs}" for step, obs in past_steps])
+    formatted_steps = "\n".join(
+        [f"✓ {step}: {obs[:80]}..." for step, obs in past_steps]
+    )
 
-    # Create a formatted state for the replanner
+    remaining_plan = state.get("plan", [])
+
+    print(f"Completed: {len(past_steps)} steps")
+    print(f"Remaining: {len(remaining_plan)} steps\n")
+
+    # Check if next step has code_generation
+    if remaining_plan and "code_generation" in remaining_plan[0]:
+        print("🎯 DETECTED: Next step is code_generation!")
+        print("   Replanner will upgrade is_documented=False → is_documented=True\n")
+
     replanner_input = {
         "input": state["input"],
-        "plan": "\n".join(state.get("plan", [])),
-        "past_steps": formatted_steps if formatted_steps else "None",
+        "plan": "\n".join([f"{i+1}. {s}" for i, s in enumerate(remaining_plan)]),
+        "past_steps": formatted_steps if formatted_steps else "None completed yet",
     }
 
-    # Replanner needs the full state to make a decision
     output = await replanner.ainvoke(replanner_input)
 
     if isinstance(output.action, Response):
-        print(f"\n✅ Final response: {output.action.response}")
-        return {
-            "response": output.action.response,
-        }
+        print(f"✅ All tasks complete!\n")
+        print(f"Final response: {output.action.response}")
+        return {"response": output.action.response}
     else:
-        print(f"\n📝 Updated plan with {len(output.action.steps)} remaining steps")
-        for i, step in enumerate(output.action.steps, 1):
-            print(f"  {i}. {step}")
-        return {"plan": output.action.steps}
+        new_plan = output.action.steps
+        print(f"📝 Updated Plan:")
+        for i, step in enumerate(new_plan, 1):
+            # Highlight if this step was upgraded
+            if "is_documented=True" in step:
+                print(f"  ⭐ {i}. {step}")
+                print(f"      └─ UPGRADED: is_documented changed to True!")
+            else:
+                print(f"     {i}. {step}")
+        print()
+        return {"plan": new_plan}
 
 
 def should_end(state: PlanExecute) -> str:
-    # End if a final response is generated or if the plan is empty
     if "response" in state and state["response"]:
         print("\n🎉 Workflow complete!")
         return "__end__"
@@ -365,10 +404,10 @@ def should_end(state: PlanExecute) -> str:
         print("\n🎉 All steps completed!")
         return "__end__"
     else:
-        return "agent"  # Continue to the agent for execution
+        return "agent"
 
 
-# --- Build the Workflow ---
+# --- Build Workflow ---
 workflow = StateGraph(PlanExecute)
 
 workflow.add_node("planner", plan_step)
@@ -382,10 +421,7 @@ workflow.add_edge("agent", "replan")
 workflow.add_conditional_edges(
     "replan",
     should_end,
-    {
-        "agent": "agent",  # Continue executing if more steps
-        "__end__": END,  # End if the replanner says it's done
-    },
+    {"agent": "agent", "__end__": END},
 )
 
 app = workflow.compile()
@@ -394,31 +430,34 @@ config = {"recursion_limit": 50}
 
 # --- Example Usage ---
 async def run_agent(inputs):
-    print(f"\n{'='*60}")
-    print(f"🚀 Starting Plan-Execute Agent")
-    print(f"{'='*60}")
-    print(f"📝 Input: {inputs['input']}")
-    print(f"{'='*60}\n")
+    print(f"\n{'='*70}")
+    print(f"🚀 STARTING PLAN-EXECUTE AGENT WITH REPLANNING DEMO")
+    print(f"{'='*70}")
+    print(f"\nObjective: {inputs['input']}")
+    print(f"\nThis demo shows how REPLANNING enhances code generation steps:")
+    print(f"  ⭐ After Replan: is_documented=True (documented code)")
+    print(f"{'='*70}\n")
 
     final_state = await app.ainvoke(inputs, config=config)
 
-    print(f"\n{'='*60}")
-    print(f"📊 Final State")
-    print(f"{'='*60}")
-    print(f"Response: {final_state.get('response', 'No response')}")
-    print(f"Steps executed: {len(final_state.get('past_steps', []))}")
-    print(f"{'='*60}\n")
+    print(f"\n{'='*70}")
+    print(f"📊 FINAL SUMMARY")
+    print(f"{'='*70}")
+    print(f"Total steps executed: {len(final_state.get('past_steps', []))}")
+    print(f"Final response: {final_state.get('response', 'Completed')}")
+    print(f"{'='*70}\n")
 
     return final_state
 
 
 if __name__ == "__main__":
-    # Test with a general knowledge question
     import asyncio
+
+    # Demo: This will clearly show the replanning enhancement
     asyncio.run(
         run_agent(
             {
-                "input": "Set up a Python project 'my_new_flask_api'. It needs a 'src' folder, an empty '__init__.py' in 'src', a 'main.py' in 'src' with a simple health endpoint and a 'README.md' at the root with title 'My New Project'."
+                "input": "Set up a Python Flask project 'my_api'. Create a 'src' folder, generate a main.py file with a simple Flask app and health endpoint, and create a README.md."
             }
         )
     )
