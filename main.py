@@ -196,7 +196,7 @@ tools = [
     code_generation,
 ]
 
-llm = ChatOpenAI(model="gpt-4", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
+llm = ChatOpenAI(model="gpt-4o", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
 agent_executor = create_react_agent(llm, tools)
 
 
@@ -344,7 +344,7 @@ async def plan_step(state: PlanExecute):
 
     print(f"📝 Initial Plan (code_generation steps start with is_documented=False):")
     for i, step in enumerate(plan_output.steps, 1):
-        print(f"  {" "} {i}. {step}")
+        print(f"  {i}. {step}")
     print()
 
     return {"plan": plan_output.steps}
