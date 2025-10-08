@@ -11,6 +11,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMe
 from langgraph.prebuilt import create_react_agent
 from langgraph.graph import StateGraph, END, START
 from langchain.tools import tool
+from textwrap import dedent
 
 # Load environment variables
 load_dotenv()
@@ -153,25 +154,31 @@ def code_generation(
 
     if is_documented:
         print("  📚 Generating DOCUMENTED code...")
-        prompt = f"""Generate well-documented {language} code for: {description}
+        prompt = dedent(
+            f"""
+                Generate well-documented {language} code for: {description}
 
-Requirements:
-1. Include comprehensive docstrings/comments explaining what the code does
-2. Add inline comments for complex logic
-3. Follow best practices and proper error handling
-4. Use type hints (for Python) or appropriate type annotations
-5. Include usage examples in comments
+                Requirements:
+                1. Include comprehensive docstrings/comments explaining what the code does
+                2. Add inline comments for complex logic
+                3. Follow best practices and proper error handling
+                4. Use type hints (for Python) or appropriate type annotations
+                5. Include usage examples in comments
 
-{parser.get_format_instructions()}
+                {parser.get_format_instructions()}
 
-Provide clean, well-documented, production-ready code."""
+                Provide clean, well-documented, production-ready code.
+            """)
     else:
         print("  📝 Generating basic code...")
-        prompt = f"""Generate {language} code for: {description}
+        prompt = dedent(
+            f"""
+                Generate {language} code for: {description}
 
-{parser.get_format_instructions()}
+                {parser.get_format_instructions()}
 
-Provide clean, functional code."""
+                Provide clean, functional code.
+            """)
 
     try:
         response = llm.invoke(prompt)
@@ -200,264 +207,16 @@ llm = ChatOpenAI(model="gpt-4o", temperature=0, api_key=os.getenv("OPENAI_API_KE
 agent_executor = create_react_agent(llm, tools)
 
 
-# --- State Definition ---
-class PlanExecute(TypedDict):
-    input: str
-    plan: List[str]
-    past_steps: Annotated[List[Tuple[str, str]], operator.add]
-    response: str
-    messages: Annotated[List[BaseMessage], operator.add]
-
-
-# --- Pydantic Models ---
-class Plan(BaseModel):
-    """Plan to follow in future"""
-
-    steps: List[str] = Field(
-        description="different steps to follow, should be in sorted order"
-    )
-
-
-class Response(BaseModel):
-    """Response to user."""
-
-    response: str
-
-
-class Act(BaseModel):
-    """Action to perform."""
-
-    action: Union[Response, Plan] = Field(
-        description="Action to perform. If you want to respond to user, use Response. "
-        "If you need to further use tools to get the answer, use Plan."
-    )
-
-
-# --- Planner Prompt ---
-planner_prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            """For the given objective, come up with a simple step by step plan for project scaffolding.
-
-Available tools:
-- create_directory: Create directories
-- create_file: Create files with content
-- write_to_file: Add content to existing files
-- move_file: Move or rename files/directories
-- delete_file: Delete files or directories
-- list_directory: List directory contents
-- code_generation: Generate code
-
-Break down the task into clear, actionable steps.""",
-        ),
-        ("placeholder", "{messages}"),
-    ]
-)
-planner = planner_prompt | llm.with_structured_output(Plan)
-
-
-# --- Enhanced Replanner with Code Generation Detection ---
-replanner_prompt = ChatPromptTemplate.from_template(
-    """You are a task replanner that improves plans as you go.
-
-Original objective: {input}
-
-Original plan:
-{plan}
-
-Completed steps:
-{past_steps}
-
-Analyze the remaining steps and improve them:
-
-CRITICAL RULE FOR CODE GENERATION:
-- If the NEXT upcoming step uses code_generation tool, you MUST change is_documented=False to is_documented=True
-- This ensures we generate properly documented code instead of basic code
-- Look for steps containing "code_generation" and upgrade them
-
-Other improvements:
-- Remove already completed steps
-- Fix any errors from past steps
-- Add missing steps if needed
-
-If all work is complete, return Response.
-Otherwise, return Plan with improved remaining steps.
-
-Example improvement:
-Original: "Use code_generation with description='create Flask app', language='python', is_documented=False"
-Improved: "Use code_generation with description='create Flask app', language='python', is_documented=True"
-"""
-)
-replanner = replanner_prompt | llm.with_structured_output(Act)
-
-
-# --- Graph Nodes ---
-async def execute_step(state: PlanExecute):
-    plan = state["plan"]
-    current_step_description = plan[0]
-
-    print(f"\n🔧 Executing step: {current_step_description}")
-
-    # Check if this is a code generation step
-    if (
-        "code_generation" in current_step_description
-        and "is_documented=True" in current_step_description
-    ):
-        print("  ⭐ REPLANNER ENHANCED THIS STEP: Added documentation!")
-
-    agent_messages = [
-        HumanMessage(content=f"Execute this task: {current_step_description}")
-    ]
-    agent_response = await agent_executor.ainvoke({"messages": agent_messages})
-
-    messages = agent_response["messages"]
-    observation = ""
-    for msg in reversed(messages):
-        if isinstance(msg, ToolMessage):
-            observation = msg.content
-            break
-        elif isinstance(msg, AIMessage) and msg.content:
-            observation = msg.content
-            break
-
-    if not observation:
-        observation = "Step completed"
-
-    print(f"✓ Result: {observation[:200]}...")
-
-    return {
-        "past_steps": [(current_step_description, observation)],
-        "plan": plan[1:],
-    }
-
-
-async def plan_step(state: PlanExecute):
-    print(f"\n{'='*60}")
-    print(f"📋 PLANNING PHASE")
-    print(f"{'='*60}")
-    print(f"Input: {state['input']}\n")
-
-    plan_output = await planner.ainvoke(
-        {"messages": [HumanMessage(content=state["input"])]}
-    )
-
-    print(f"📝 Initial Plan (code_generation steps start with is_documented=False):")
-    for i, step in enumerate(plan_output.steps, 1):
-        print(f"  {i}. {step}")
-    print()
-
-    return {"plan": plan_output.steps}
-
-
-async def replan_step(state: PlanExecute):
-    print(f"\n{'='*60}")
-    print(f"🔄 REPLANNING PHASE")
-    print(f"{'='*60}")
-
-    past_steps = state.get("past_steps", [])
-    formatted_steps = "\n".join(
-        [f"✓ {step}: {obs[:80]}..." for step, obs in past_steps]
-    )
-
-    remaining_plan = state.get("plan", [])
-
-    print(f"Completed: {len(past_steps)} steps")
-    print(f"Remaining: {len(remaining_plan)} steps\n")
-
-    # Check if next step has code_generation
-    if remaining_plan and "code_generation" in remaining_plan[0]:
-        print("🎯 DETECTED: Next step is code_generation!")
-        print("   Replanner will upgrade is_documented=False → is_documented=True\n")
-
-    replanner_input = {
-        "input": state["input"],
-        "plan": "\n".join([f"{i+1}. {s}" for i, s in enumerate(remaining_plan)]),
-        "past_steps": formatted_steps if formatted_steps else "None completed yet",
-    }
-
-    output = await replanner.ainvoke(replanner_input)
-
-    if isinstance(output.action, Response):
-        print(f"✅ All tasks complete!\n")
-        print(f"Final response: {output.action.response}")
-        return {"response": output.action.response}
-    else:
-        new_plan = output.action.steps
-        print(f"📝 Updated Plan:")
-        for i, step in enumerate(new_plan, 1):
-            # Highlight if this step was upgraded
-            if "is_documented=True" in step:
-                print(f"  ⭐ {i}. {step}")
-                print(f"      └─ UPGRADED: is_documented changed to True!")
-            else:
-                print(f"     {i}. {step}")
-        print()
-        return {"plan": new_plan}
-
-
-def should_end(state: PlanExecute) -> str:
-    if "response" in state and state["response"]:
-        print("\n🎉 Workflow complete!")
-        return "__end__"
-    elif not state.get("plan", []):
-        print("\n🎉 All steps completed!")
-        return "__end__"
-    else:
-        return "agent"
-
-
-# --- Build Workflow ---
-workflow = StateGraph(PlanExecute)
-
-workflow.add_node("planner", plan_step)
-workflow.add_node("agent", execute_step)
-workflow.add_node("replan", replan_step)
-
-workflow.add_edge(START, "planner")
-workflow.add_edge("planner", "agent")
-workflow.add_edge("agent", "replan")
-
-workflow.add_conditional_edges(
-    "replan",
-    should_end,
-    {"agent": "agent", "__end__": END},
-)
-
-app = workflow.compile()
-config = {"recursion_limit": 50}
-
-
-# --- Example Usage ---
-async def run_agent(inputs):
-    print(f"\n{'='*70}")
-    print(f"🚀 STARTING PLAN-EXECUTE AGENT WITH REPLANNING DEMO")
-    print(f"{'='*70}")
-    print(f"\nObjective: {inputs['input']}")
-    print(f"\nThis demo shows how REPLANNING enhances code generation steps:")
-    print(f"  ⭐ After Replan: is_documented=True (documented code)")
-    print(f"{'='*70}\n")
-
-    final_state = await app.ainvoke(inputs, config=config)
-
-    print(f"\n{'='*70}")
-    print(f"📊 FINAL SUMMARY")
-    print(f"{'='*70}")
-    print(f"Total steps executed: {len(final_state.get('past_steps', []))}")
-    print(f"Final response: {final_state.get('response', 'Completed')}")
-    print(f"{'='*70}\n")
-
-    return final_state
+def test_code_generation():
+    """Test code generation"""
+    print("🚀 Testing code generation...")
+    result = code_generation.invoke({
+        "description": "a function that adds two numbers",
+        "language": "python",
+        "is_documented": True
+    })
+    print(result)
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    # Demo: This will clearly show the replanning enhancement
-    asyncio.run(
-        run_agent(
-            {
-                "input": "Set up a Python Flask project 'my_api'. Create a 'src' folder, generate a main.py file with a simple Flask app and health endpoint, and create a README.md."
-            }
-        )
-    )
+    test_code_generation()
