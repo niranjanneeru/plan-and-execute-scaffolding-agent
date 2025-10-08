@@ -6,7 +6,8 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import BaseMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.prebuilt import create_react_agent
 from langchain.tools import tool
 from textwrap import dedent
@@ -234,3 +235,71 @@ class Act(BaseModel):
         description="Action to perform. If you want to respond to user, use Response. "
         "If you need to further use tools to get the answer, use Plan."
     )
+
+# --- Planner Prompt ---
+planner_prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            dedent("""
+                For the given objective, come up with a simple step by step plan for project scaffolding.
+
+                Available tools:
+                - create_directory: Create directories
+                - create_file: Create files with content
+                - write_to_file: Add content to existing files
+                - move_file: Move or rename files/directories
+                - delete_file: Delete files or directories
+                - list_directory: List directory contents
+                - code_generation: Generate code
+
+                Break down the task into clear, actionable steps."""
+            ),
+        ),
+        ("placeholder", "{messages}"),
+    ]
+)
+planner = planner_prompt | llm.with_structured_output(Plan)
+
+
+async def plan_step(state: PlanExecute):
+    print(f"\n{'='*60}")
+    print("📋 PLANNING PHASE")
+    print(f"{'='*60}")
+    print(f"Input: {state['input']}\n")
+
+    plan_output = await planner.ainvoke(
+        {"messages": [HumanMessage(content=state["input"])]}
+    )
+
+    print("📝 Initial Plan (code_generation steps start with is_documented=False):")
+    for i, step in enumerate(plan_output.steps, 1):
+        print(f"  {i}. {step}")
+    print()
+
+    return {"plan": plan_output.steps}
+
+
+async def test_planner():
+    """Test the planner node"""
+    print("🚀 Testing Planner Node...")
+    
+    test_state = PlanExecute(
+        input="Create a simple Flask web application with a home page and about page",
+        plan=[],
+        past_steps=[],
+        response="",
+        messages=[]
+    )
+    
+    result = await plan_step(test_state)
+    
+    print("✅ Planner execution completed!")
+    print(f"Generated {len(result['plan'])} steps")
+    
+    return result
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(test_planner())
