@@ -205,11 +205,11 @@ agent_executor = create_react_agent(llm, tools)
 
 # --- State Definition ---
 class PlanExecute(TypedDict):
-    input: str
-    plan: List[str]
-    past_steps: Annotated[List[Tuple[str, str]], operator.add]
-    response: str
-    messages: Annotated[List[BaseMessage], operator.add]
+    input: str  # Original user objective/request
+    plan: List[str]  # Remaining steps to execute
+    past_steps: Annotated[List[Tuple[str, str]], operator.add]  # Completed steps with results
+    response: str  # Final response when all tasks complete
+    messages: Annotated[List[BaseMessage], operator.add]  # Chat history for agent execution
 
 
 # --- Pydantic Models ---
