@@ -1,7 +1,12 @@
 import os
+import operator
+from typing import Annotated, List, Tuple, Union
+from typing_extensions import TypedDict
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import BaseMessage
 from langgraph.prebuilt import create_react_agent
 from langchain.tools import tool
 from textwrap import dedent
@@ -198,16 +203,34 @@ llm = ChatOpenAI(model="gpt-4o", temperature=0, api_key=os.getenv("OPENAI_API_KE
 agent_executor = create_react_agent(llm, tools)
 
 
-def test_code_generation():
-    """Test code generation"""
-    print("🚀 Testing code generation...")
-    result = code_generation.invoke({
-        "description": "a function that adds two numbers",
-        "language": "python",
-        "is_documented": True
-    })
-    print(result)
+# --- State Definition ---
+class PlanExecute(TypedDict):
+    input: str
+    plan: List[str]
+    past_steps: Annotated[List[Tuple[str, str]], operator.add]
+    response: str
+    messages: Annotated[List[BaseMessage], operator.add]
 
 
-if __name__ == "__main__":
-    test_code_generation()
+# --- Pydantic Models ---
+class Plan(BaseModel):
+    """Plan to follow in future"""
+
+    steps: List[str] = Field(
+        description="different steps to follow, should be in sorted order"
+    )
+
+
+class Response(BaseModel):
+    """Response to user."""
+
+    response: str
+
+
+class Act(BaseModel):
+    """Action to perform."""
+
+    action: Union[Response, Plan] = Field(
+        description="Action to perform. If you want to respond to user, use Response. "
+        "If you need to further use tools to get the answer, use Plan."
+    )
