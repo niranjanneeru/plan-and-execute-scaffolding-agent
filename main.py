@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage
-from langgraph.prebuilt import create_react_agent
 from langchain.tools import tool
 from textwrap import dedent
 
@@ -200,7 +199,6 @@ tools = [
 ]
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
-agent_executor = create_react_agent(llm, tools)
 
 
 # --- State Definition ---
@@ -210,27 +208,3 @@ class PlanExecute(TypedDict):
     past_steps: Annotated[List[Tuple[str, str]], operator.add]  # Completed steps with results
     response: str  # Final response when all tasks complete
     messages: Annotated[List[BaseMessage], operator.add]  # Chat history for agent execution
-
-
-# --- Pydantic Models ---
-class Plan(BaseModel):
-    """Plan to follow in future"""
-
-    steps: List[str] = Field(
-        description="different steps to follow, should be in sorted order"
-    )
-
-
-class Response(BaseModel):
-    """Response to user."""
-
-    response: str
-
-
-class Act(BaseModel):
-    """Action to perform."""
-
-    action: Union[Response, Plan] = Field(
-        description="Action to perform. If you want to respond to user, use Response. "
-        "If you need to further use tools to get the answer, use Plan."
-    )
