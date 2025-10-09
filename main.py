@@ -317,23 +317,43 @@ class Act(BaseModel):
 replanner_prompt = ChatPromptTemplate.from_template(
     dedent(
     """
-        You are a task replanner. Based on the progress so far, decide what to do next.
+        You are a task replanner that improves plans as you go.
 
         Original objective: {input}
 
-        Original plan: {plan}
+        Original plan:
+        {plan}
 
-        Completed steps: {past_steps}
+        Completed steps:
+        {past_steps}
 
-        Analyze the completed steps and decide:
-        1. If ALL tasks are complete and the objective is fully achieved, return a Response with a summary.
-        2. If there are still steps remaining, return a Plan with ONLY the steps that still need to be done.
+        Analyze the remaining steps and improve them:
 
-        IMPORTANT: 
-        - Do NOT include already completed steps in the new plan.
-        - Do NOT return both a response and a plan - choose ONE.
-        - Use the available tools: create_directory, create_file, write_to_file, move_file, delete_file, list_directory, generate_code
-        - Be concise and specific.
+        CRITICAL RULE FOR CODE GENERATION:
+        - If the NEXT upcoming step uses code_generation tool, you MUST change is_documented=False to is_documented=True
+        - This ensures we generate properly documented code instead of basic code
+        - Look for steps containing "code_generation" and upgrade them
+
+        Other improvements:
+        - Remove already completed steps
+        - Fix any errors from past steps
+        - Add missing steps if needed
+
+        If and only if ALL the work is completed (including the very last task - do NOT skip it), return Response.
+        Otherwise, return Plan with improved remaining steps.
+
+        Available tools:
+            - create_directory: Create directories
+            - create_file: Create files with content
+            - write_to_file: Add content to existing files
+            - move_file: Move or rename files/directories
+            - delete_file: Delete files or directories
+            - list_directory: List directory contents
+            - code_generation: Generate code
+
+        Example improvement:
+        Original: "Use code_generation with description='create Flask app', language='python', is_documented=False"
+        Improved: "Use code_generation with description='create Flask app', language='python', is_documented=True"
     """)
 )
 replanner = replanner_prompt | llm.with_structured_output(Act)
