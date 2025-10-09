@@ -1,7 +1,12 @@
 import os
+import operator
+from typing import Annotated, List, Tuple, Union
+from typing_extensions import TypedDict
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import BaseMessage
 from langchain.tools import tool
 from textwrap import dedent
 
@@ -196,16 +201,10 @@ tools = [
 llm = ChatOpenAI(model="gpt-4o", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
 
 
-def test_code_generation():
-    """Test code generation"""
-    print("🚀 Testing code generation...")
-    result = code_generation.invoke({
-        "description": "a function that adds two numbers",
-        "language": "python",
-        "is_documented": True
-    })
-    print(result)
-
-
-if __name__ == "__main__":
-    test_code_generation()
+# --- State Definition ---
+class PlanExecute(TypedDict):
+    input: str  # Original user objective/request
+    plan: List[str]  # Remaining steps to execute
+    past_steps: Annotated[List[Tuple[str, str]], operator.add]  # Completed steps with results
+    response: str  # Final response when all tasks complete
+    messages: Annotated[List[BaseMessage], operator.add]  # Chat history for agent execution
