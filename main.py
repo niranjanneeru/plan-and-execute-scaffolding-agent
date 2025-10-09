@@ -4,13 +4,14 @@ from typing import Annotated, List, Tuple, Union
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+from textwrap import dedent
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage, AIMessage
 from langgraph.prebuilt import create_react_agent
+from langgraph.graph import StateGraph, END, START
 from langchain.tools import tool
-from textwrap import dedent
 
 load_dotenv()
 
@@ -203,7 +204,6 @@ tools = [
 llm = ChatOpenAI(model="gpt-4o", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
 
 
-# --- State Definition ---
 class PlanExecute(TypedDict):
     input: str  # Original user objective/request
     plan: List[str]  # Remaining steps to execute
@@ -211,8 +211,6 @@ class PlanExecute(TypedDict):
     response: str  # Final response when all tasks complete
     messages: Annotated[List[BaseMessage], operator.add]  # Chat history for agent execution
 
-
-# --- Pydantic Models ---
 class Plan(BaseModel):
     """Plan to follow in future"""
 
@@ -220,7 +218,6 @@ class Plan(BaseModel):
         description="different steps to follow, should be in sorted order"
     )
 
-# --- Planner Prompt ---
 planner_prompt = ChatPromptTemplate.from_messages(
     [
         (
@@ -384,3 +381,69 @@ async def replan_step(state: PlanExecute):
                 print(f"     {i}. {step}")
         print()
         return {"plan": new_plan}
+
+def should_end(state: PlanExecute) -> str:
+    if "response" in state and state["response"]:
+        print("\n🎉 Workflow complete!")
+        return "__end__"
+    elif not state.get("plan", []):
+        print("\n🎉 All steps completed!")
+        return "__end__"
+    else:
+        return "agent"
+
+
+# --- Build Workflow ---
+workflow = StateGraph(PlanExecute)
+
+workflow.add_node("planner", plan_step)
+workflow.add_node("agent", execute_step)
+workflow.add_node("replan", replan_step)
+
+workflow.add_edge(START, "planner")
+workflow.add_edge("planner", "agent")
+workflow.add_edge("agent", "replan")
+
+workflow.add_conditional_edges(
+    "replan",
+    should_end,
+    {"agent": "agent", "__end__": END},
+)
+
+app = workflow.compile()
+config = {"recursion_limit": 50}
+
+
+# --- Example Usage ---
+async def run_agent(inputs):
+    print(f"\n{'='*70}")
+    print("🚀 STARTING PLAN-EXECUTE AGENT WITH REPLANNING DEMO")
+    print(f"{'='*70}")
+    print(f"\nObjective: {inputs['input']}")
+    print("\nThis demo shows how REPLANNING enhances code generation steps:")
+    print("  ⭐ After Replan: is_documented=True (documented code)")
+    print(f"{'='*70}\n")
+
+    final_state = await app.ainvoke(inputs, config=config)
+
+    print(f"\n{'='*70}")
+    print("📊 FINAL SUMMARY")
+    print(f"{'='*70}")
+    print(f"Total steps executed: {len(final_state.get('past_steps', []))}")
+    print(f"Final response: {final_state.get('response', 'Completed')}")
+    print(f"{'='*70}\n")
+
+    return final_state
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    # Demo: This will clearly show the replanning enhancement
+    asyncio.run(
+        run_agent(
+            {
+                "input": "Set up a Python Flask project 'my_api'. Create a 'src' folder, generate a main.py file with a simple Flask app and health endpoint, and create a README.md."
+            }
+        )
+    )
