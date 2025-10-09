@@ -204,7 +204,6 @@ tools = [
 llm = ChatOpenAI(model="gpt-4o", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
 
 
-# --- State Definition ---
 class PlanExecute(TypedDict):
     input: str  # Original user objective/request
     plan: List[str]  # Remaining steps to execute
@@ -212,8 +211,6 @@ class PlanExecute(TypedDict):
     response: str  # Final response when all tasks complete
     messages: Annotated[List[BaseMessage], operator.add]  # Chat history for agent execution
 
-
-# --- Pydantic Models ---
 class Plan(BaseModel):
     """Plan to follow in future"""
 
@@ -221,7 +218,6 @@ class Plan(BaseModel):
         description="different steps to follow, should be in sorted order"
     )
 
-# --- Planner Prompt ---
 planner_prompt = ChatPromptTemplate.from_messages(
     [
         (
