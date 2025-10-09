@@ -65,7 +65,7 @@ This agent demonstrates an advanced **Plan-Execute-Replan** pattern where:
 ### Prerequisites
 
 ```bash
-Python 3.8+
+Python 3.9+
 OpenAI API Key
 ```
 
