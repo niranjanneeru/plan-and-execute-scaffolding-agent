@@ -303,28 +303,84 @@ async def execute_step(state: PlanExecute):
         "plan": plan[1:],
     }
 
+class Response(BaseModel):
+    """Response to user."""
 
-async def test_execute():
-    """Test the execute step"""
-    print("🚀 Testing Execute Step...")
-    
-    test_state = PlanExecute(
-        input="Create a test directory",
-        plan=["create_directory('test_execution')"],
-        past_steps=[],
-        response="",
-        messages=[]
+    response: str
+
+
+class Act(BaseModel):
+    """Action to perform."""
+
+    action: Union[Response, Plan] = Field(
+        description="Action to perform. If you want to respond to user, use Response. "
+        "If you need to further use tools to get the answer, use Plan."
+    )    
+
+replanner_prompt = ChatPromptTemplate.from_template(
+    dedent(
+    """
+        You are a task replanner. Based on the progress so far, decide what to do next.
+
+        Original objective: {input}
+
+        Original plan: {plan}
+
+        Completed steps: {past_steps}
+
+        Analyze the completed steps and decide:
+        1. If ALL tasks are complete and the objective is fully achieved, return a Response with a summary.
+        2. If there are still steps remaining, return a Plan with ONLY the steps that still need to be done.
+
+        IMPORTANT: 
+        - Do NOT include already completed steps in the new plan.
+        - Do NOT return both a response and a plan - choose ONE.
+        - Use the available tools: create_directory, create_file, write_to_file, move_file, delete_file, list_directory, generate_code
+        - Be concise and specific.
+    """)
+)
+replanner = replanner_prompt | llm.with_structured_output(Act)
+
+
+async def replan_step(state: PlanExecute):
+    print(f"\n{'='*60}")
+    print("🔄 REPLANNING PHASE")
+    print(f"{'='*60}")
+
+    past_steps = state.get("past_steps", [])
+    formatted_steps = "\n".join(
+        [f"✓ {step}: {obs[:80]}..." for step, obs in past_steps]
     )
-    
-    result = await execute_step(test_state)
-    
-    print("✅ Execute step completed!")
-    print(f"Past steps: {len(result['past_steps'])}")
-    print(f"Remaining plan: {len(result['plan'])}")
-    
-    return result
 
+    remaining_plan = state.get("plan", [])
 
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(test_execute())
+    print(f"Completed: {len(past_steps)} steps")
+    print(f"Remaining: {len(remaining_plan)} steps\n")
+
+    if remaining_plan and "code_generation" in remaining_plan[0]:
+        print("🎯 DETECTED: Next step is code_generation!")
+        print("   Replanner will upgrade is_documented=False → is_documented=True\n")
+
+    replanner_input = {
+        "input": state["input"],
+        "plan": "\n".join([f"{i+1}. {s}" for i, s in enumerate(remaining_plan)]),
+        "past_steps": formatted_steps if formatted_steps else "None completed yet",
+    }
+
+    output = await replanner.ainvoke(replanner_input)
+
+    if isinstance(output.action, Response):
+        print("✅ All tasks complete!\n")
+        print(f"Final response: {output.action.response}")
+        return {"response": output.action.response}
+    else:
+        new_plan = output.action.steps
+        print("📝 Updated Plan:")
+        for i, step in enumerate(new_plan, 1):
+            if "is_documented=True" in step:
+                print(f"  ⭐ {i}. {step}")
+                print("      └─ UPGRADED: is_documented changed to True!")
+            else:
+                print(f"     {i}. {step}")
+        print()
+        return {"plan": new_plan}
