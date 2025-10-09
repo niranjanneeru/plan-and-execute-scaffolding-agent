@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 
 from langchain_openai import ChatOpenAI
 from langchain.tools import tool
+from textwrap import dedent
 
 load_dotenv()
 
@@ -122,7 +123,64 @@ def list_directory(path: str = "generated_projects") -> str:
         return f"✗ Error listing directory: {str(e)}"
 
 
-## TODO: Code Generation Tool
+@tool
+def code_generation(
+    description: str, language: str, is_documented: bool = False
+) -> str:
+    """Generate code based on description.
+
+    Args:
+        description: What the code should do
+        language: Programming language (python, javascript, etc.)
+        is_documented: If True, generate comprehensive documentation and comments
+    """
+    from pydantic import BaseModel
+    from langchain_core.output_parsers import PydanticOutputParser
+
+    class CodeResponse(BaseModel):
+        code: str
+
+    parser = PydanticOutputParser(pydantic_object=CodeResponse)
+
+    if is_documented:
+        print("  📚 Generating DOCUMENTED code...")
+        prompt = dedent(
+            f"""
+                Generate well-documented {language} code for: {description}
+
+                Requirements:
+                1. Include comprehensive docstrings/comments explaining what the code does
+                2. Add inline comments for complex logic
+                3. Follow best practices and proper error handling
+                4. Use type hints (for Python) or appropriate type annotations
+                5. Include usage examples in comments
+
+                {parser.get_format_instructions()}
+
+                Provide clean, well-documented, production-ready code.
+            """)
+    else:
+        print("  📝 Generating basic code...")
+        prompt = dedent(
+            f"""
+                Generate {language} code for: {description}
+
+                {parser.get_format_instructions()}
+
+                Provide clean, functional code.
+            """)
+
+    try:
+        response = llm.invoke(prompt)
+        parsed = parser.parse(response.content)
+        doc_status = (
+            "with comprehensive documentation"
+            if is_documented
+            else "without documentation"
+        )
+        return f"✓ Generated code {doc_status}\n\n{parsed.code}"
+    except Exception as e:
+        return f"✗ Error generating code: {str(e)}"
 
 
 tools = [
@@ -132,23 +190,22 @@ tools = [
     move_file,
     delete_file,
     list_directory,
+    code_generation,
 ]
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
 
 
-# --- Quick Tool Execution ---
-def test_tools():
-    """Simple test of all tools"""
-    print("🛠️  Testing tools...")
-    
-    # Test basic operations
-    print(create_directory.invoke({"path": "test_dir"}))
-    print(create_file.invoke({"path": "test_dir/hello.txt", "content": "Hello World!"}))
-    print(list_directory.invoke({"path": "test_dir"}))
-    print(write_to_file.invoke({"path": "test_dir/hello.txt", "content": "\nGoodbye!"}))
-    print(list_directory.invoke({}))
+def test_code_generation():
+    """Test code generation"""
+    print("🚀 Testing code generation...")
+    result = code_generation.invoke({
+        "description": "a function that adds two numbers",
+        "language": "python",
+        "is_documented": True
+    })
+    print(result)
 
 
 if __name__ == "__main__":
-    test_tools()
+    test_code_generation()
