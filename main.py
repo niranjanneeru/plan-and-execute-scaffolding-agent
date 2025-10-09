@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage, AIMessage
+from langgraph.prebuilt import create_react_agent
 from langchain.tools import tool
 from textwrap import dedent
 
@@ -263,26 +264,67 @@ async def plan_step(state: PlanExecute):
     return {"plan": plan_output.steps}
 
 
-async def test_planner():
-    """Test the planner node"""
-    print("🚀 Testing Planner Node...")
+agent_executor = create_react_agent(llm, tools)
+
+async def execute_step(state: PlanExecute):
+    plan = state["plan"]
+    current_step_description = plan[0]
+
+    print(f"\n🔧 Executing step: {current_step_description}")
+
+    if (
+        "code_generation" in current_step_description
+        and "is_documented=True" in current_step_description
+    ):
+        print("  ⭐ REPLANNER ENHANCED THIS STEP: Added documentation!")
+
+    agent_messages = [
+        HumanMessage(content=f"Execute this task: {current_step_description}")
+    ]
+    agent_response = await agent_executor.ainvoke({"messages": agent_messages})
+
+    messages = agent_response["messages"]
+    observation = ""
+    for msg in reversed(messages):
+        if isinstance(msg, ToolMessage):
+            observation = msg.content
+            break
+        elif isinstance(msg, AIMessage) and msg.content:
+            observation = msg.content
+            break
+
+    if not observation:
+        observation = "Step completed"
+
+    print(f"✓ Result: {observation[:200]}...")
+
+    return {
+        "past_steps": [(current_step_description, observation)],
+        "plan": plan[1:],
+    }
+
+
+async def test_execute():
+    """Test the execute step"""
+    print("🚀 Testing Execute Step...")
     
     test_state = PlanExecute(
-        input="Create a simple Flask web application with a home page and about page",
-        plan=[],
+        input="Create a test directory",
+        plan=["create_directory('test_execution')"],
         past_steps=[],
         response="",
         messages=[]
     )
     
-    result = await plan_step(test_state)
+    result = await execute_step(test_state)
     
-    print("✅ Planner execution completed!")
-    print(f"Generated {len(result['plan'])} steps")
+    print("✅ Execute step completed!")
+    print(f"Past steps: {len(result['past_steps'])}")
+    print(f"Remaining plan: {len(result['plan'])}")
     
     return result
 
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(test_planner())
+    asyncio.run(test_execute())
