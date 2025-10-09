@@ -201,16 +201,15 @@ tools = [
 ]
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
-agent_executor = create_react_agent(llm, tools)
 
 
 # --- State Definition ---
 class PlanExecute(TypedDict):
-    input: str
-    plan: List[str]
-    past_steps: Annotated[List[Tuple[str, str]], operator.add]
-    response: str
-    messages: Annotated[List[BaseMessage], operator.add]
+    input: str  # Original user objective/request
+    plan: List[str]  # Remaining steps to execute
+    past_steps: Annotated[List[Tuple[str, str]], operator.add]  # Completed steps with results
+    response: str  # Final response when all tasks complete
+    messages: Annotated[List[BaseMessage], operator.add]  # Chat history for agent execution
 
 
 # --- Pydantic Models ---
@@ -219,21 +218,6 @@ class Plan(BaseModel):
 
     steps: List[str] = Field(
         description="different steps to follow, should be in sorted order"
-    )
-
-
-class Response(BaseModel):
-    """Response to user."""
-
-    response: str
-
-
-class Act(BaseModel):
-    """Action to perform."""
-
-    action: Union[Response, Plan] = Field(
-        description="Action to perform. If you want to respond to user, use Response. "
-        "If you need to further use tools to get the answer, use Plan."
     )
 
 # --- Planner Prompt ---
@@ -279,6 +263,8 @@ async def plan_step(state: PlanExecute):
 
     return {"plan": plan_output.steps}
 
+
+agent_executor = create_react_agent(llm, tools)
 
 async def execute_step(state: PlanExecute):
     plan = state["plan"]
