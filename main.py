@@ -339,8 +339,17 @@ replanner_prompt = ChatPromptTemplate.from_template(
         - Fix any errors from past steps
         - Add missing steps if needed
 
-        If all work is complete, return Response.
+        If and only if ALL the work is completed (including the very last task - do NOT skip it), return Response.
         Otherwise, return Plan with improved remaining steps.
+
+        Available tools:
+            - create_directory: Create directories
+            - create_file: Create files with content
+            - write_to_file: Add content to existing files
+            - move_file: Move or rename files/directories
+            - delete_file: Delete files or directories
+            - list_directory: List directory contents
+            - code_generation: Generate code
 
         Example improvement:
         Original: "Use code_generation with description='create Flask app', language='python', is_documented=False"
