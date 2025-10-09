@@ -2,7 +2,6 @@ import os
 from dotenv import load_dotenv
 
 from langchain_openai import ChatOpenAI
-from langgraph.prebuilt import create_react_agent
 from langchain.tools import tool
 from textwrap import dedent
 
@@ -195,7 +194,6 @@ tools = [
 ]
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
-agent_executor = create_react_agent(llm, tools)
 
 
 def test_code_generation():
