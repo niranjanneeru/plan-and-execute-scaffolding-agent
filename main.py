@@ -303,6 +303,20 @@ async def execute_step(state: PlanExecute):
         "plan": plan[1:],
     }
 
+class Response(BaseModel):
+    """Response to user."""
+
+    response: str
+
+
+class Act(BaseModel):
+    """Action to perform."""
+
+    action: Union[Response, Plan] = Field(
+        description="Action to perform. If you want to respond to user, use Response. "
+        "If you need to further use tools to get the answer, use Plan."
+    )    
+
 replanner_prompt = ChatPromptTemplate.from_template(
     dedent(
     """
