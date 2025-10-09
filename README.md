@@ -73,7 +73,6 @@ OpenAI API Key
 
 1. **Create and activate a virtual environment:**
 
-   **On Linux/macOS:**
    ```bash
    # Create virtual environment
    python3 -m venv venv
