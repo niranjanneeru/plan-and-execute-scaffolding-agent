@@ -71,7 +71,7 @@ OpenAI API Key
 
 ### Installation
 
-1. **Create and activate a virtual environment:**
+1. Create and activate a virtual environment:
 
    ```bash
    # Create virtual environment
