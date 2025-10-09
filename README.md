@@ -71,12 +71,23 @@ OpenAI API Key
 
 ### Installation
 
-1. Install dependencies:
+1. **Create and activate a virtual environment:**
+
+   **On Linux/macOS:**
+   ```bash
+   # Create virtual environment
+   python3 -m venv venv
+   
+   # Activate virtual environment
+   source venv/bin/activate
+   ```
+
+2. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Set up environment variables in `.env`:
+3. Set up environment variables in `.env`:
 ```bash
 OPENAI_API_KEY=your_openai_api_key
 ```
